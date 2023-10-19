@@ -48,6 +48,7 @@ class GBM:
 
     def _least_squares(self, data: np.array) -> tuple:
         """Estimate Vasicek parameters using Least Squares Method."""
+        changes = (data[1:] - data[:-1]) / data[:-1]
 
         def _ls_error(params: tuple, data: np.array) -> float:
             """Least squares error for the Vasicek model."""
@@ -56,7 +57,7 @@ class GBM:
             return np.sum((data[1:] - predicted)**2)
 
         init_params = [0.05, 0.02]
-        result = minimize(_ls_error, init_params, args=(data), method='L-BFGS-B')
+        result = minimize(_ls_error, init_params, args=(changes), method='L-BFGS-B')
         params = result.x
 
         self.set_params(params)
@@ -65,19 +66,21 @@ class GBM:
 
     def _mle(self, data: np.array) -> tuple:
         """Estimate GBM parameters using Maximum Likelihood Estimation."""
+        # data = (data[1:] - data[:-1]) / data[:-1]
+
         def _log_likelihood(params: tuple, data: np.array) -> float:
             mu, sigma = params
             n = len(data) - 1
-            log_returns = np.log(data[1:] / data[:-1])
+            data = np.log(data[1:] / data[:-1])
             
             # Compute the log-likelihood
-            log_likelihood = -0.5 * n * np.log(2 * np.pi) - 0.5 * n * np.log(sigma**2 * self.dt) - 0.5 * np.sum((log_returns - mu*self.dt)**2) / (sigma**2 * self.dt)
+            log_likelihood = -0.5 * n * np.log(2 * np.pi) - 0.5 * n * np.log(sigma**2 * self.dt) - 0.5 * np.sum((data - mu*self.dt)**2) / (sigma**2 * self.dt)
             
             return -log_likelihood
 
         
         init_params = [0.05, 0.02]
-        result = minimize(_log_likelihood, init_params, args=(data), bounds = [(None, None), (0.00000001, 0.5)])
+        result = minimize(_log_likelihood, init_params, args=(data), bounds = [(None, None), (0.0001, 0.5)])
         params = result.x
 
         self.set_params(params)
@@ -250,7 +253,24 @@ class CIRProcess(GBM):
         params = (kappa, theta, sigma)
         
         # Set existing model to newly computed parameters
+        self.set_params(params)\
+    
+
+        """Estimate Vasicek parameters using Method of Moments."""
+        mu = np.mean(data)
+        sigma2 = np.var(data)
+        rho = np.corrcoef(data[:-1], data[1:])[0,1]
+        
+        # Compute parameters
+        kappa = -np.log(rho)
+        theta = (mu * (1 - rho))
+        sigma = np.sqrt(sigma2 * 2 * kappa / (1 - rho**2))
+        params = (kappa, theta, sigma)
+        
+        # Set existing model to newly computed parameters
         self.set_params(params)
+
+        return params
 
         return params
 
